@@ -1,11 +1,11 @@
 use crate::error::{Error, Result};
 use crate::transport::Transport;
 use bytes::Bytes;
-use native_tls::TlsConnector;
 use reqwest::{
     blocking::{Client, ClientBuilder},
     header::HeaderMap,
 };
+use rustls::ClientConfig;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use url::Url;
@@ -20,17 +20,17 @@ impl PollingTransport {
     /// Creates an instance of `PollingTransport`.
     pub fn new(
         base_url: Url,
-        tls_config: Option<TlsConnector>,
+        tls_config: Option<ClientConfig>,
         opening_headers: Option<HeaderMap>,
     ) -> Self {
         let client = match (tls_config, opening_headers) {
             (Some(config), Some(map)) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .default_headers(map)
                 .build()
                 .unwrap(),
             (Some(config), None) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .build()
                 .unwrap(),
             (None, Some(map)) => ClientBuilder::new().default_headers(map).build().unwrap(),

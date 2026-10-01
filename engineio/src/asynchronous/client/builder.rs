@@ -12,7 +12,7 @@ use crate::{
 };
 use bytes::Bytes;
 use futures_util::{StreamExt, future::BoxFuture};
-use native_tls::TlsConnector;
+use rustls::ClientConfig;
 use url::Url;
 
 use super::Client;
@@ -20,7 +20,7 @@ use super::Client;
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
     url: Url,
-    tls_config: Option<TlsConnector>,
+    tls_config: Option<ClientConfig>,
     headers: Option<HeaderMap>,
     handshake: Option<HandshakePacket>,
     on_error: OptionalCallback<String>,
@@ -54,7 +54,7 @@ impl ClientBuilder {
     }
 
     /// Specify transport's tls config
-    pub fn tls_config(mut self, tls_config: TlsConnector) -> Self {
+    pub fn tls_config(mut self, tls_config: ClientConfig) -> Self {
         self.tls_config = Some(tls_config);
         self
     }

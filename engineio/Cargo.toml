@@ -17,18 +17,18 @@ all-features = true
 [dependencies]
 base64 = "0.23.1"
 bytes = "1"
-reqwest = { version = "0.13.5", features = ["blocking", "native-tls", "stream"] }
+reqwest = { version = "0.13.5", features = ["blocking", "rustls", "stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 http = "1.1.0"
-tokio-tungstenite = { version = "0.30.0", features = ["native-tls", "url"] }
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-native-roots", "url"] }
 tungstenite = "0.30.0"
 tokio = { version = "1.40.0", features = ["rt-multi-thread"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 async-trait = "0.1.83"
 async-stream = "0.3.6"
 thiserror = "2.0.21"
-native-tls = "0.2.12"
+rustls = "0.23"
 url = "2.5.4"
 
 [dev-dependencies]

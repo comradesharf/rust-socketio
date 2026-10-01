@@ -1,7 +1,10 @@
 use criterion::{criterion_group, criterion_main};
-use native_tls::Certificate;
-use native_tls::TlsConnector;
 use rust_engineio::error::Error;
+use rustls::ClientConfig;
+use rustls::{
+    RootCertStore,
+    pki_types::{CertificateDer, pem::PemObject},
+};
 use std::fs::File;
 use std::io::Read;
 use url::Url;
@@ -24,19 +27,21 @@ pub mod util {
         Ok(Url::parse(&url)?)
     }
 
-    pub fn tls_connector() -> Result<TlsConnector, Error> {
+    pub fn tls_connector() -> Result<ClientConfig, Error> {
         let cert_path = "../".to_owned()
             + &std::env::var("CA_CERT_PATH").unwrap_or_else(|_| "ci/cert/ca.crt".to_owned());
         let mut cert_file = File::open(cert_path)?;
         let mut buf = vec![];
         cert_file.read_to_end(&mut buf)?;
-        let cert: Certificate = Certificate::from_pem(&buf[..]).unwrap();
-        Ok(TlsConnector::builder()
-            // ONLY USE FOR TESTING!
-            .danger_accept_invalid_hostnames(true)
-            .add_root_certificate(cert)
-            .build()
-            .unwrap())
+        let mut roots = RootCertStore::empty();
+        for cert in CertificateDer::pem_slice_iter(&buf) {
+            roots
+                .add(cert.map_err(std::io::Error::other)?)
+                .map_err(std::io::Error::other)?;
+        }
+        Ok(ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth())
     }
 }
 

@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 use http::HeaderMap;
-use native_tls::TlsConnector;
 use reqwest::{Client, ClientBuilder};
+use rustls::ClientConfig;
 use std::fmt::Debug;
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
@@ -25,17 +25,17 @@ pub struct PollingTransport {
 impl PollingTransport {
     pub fn new(
         base_url: Url,
-        tls_config: Option<TlsConnector>,
+        tls_config: Option<ClientConfig>,
         opening_headers: Option<HeaderMap>,
     ) -> Self {
         let client = match (tls_config, opening_headers) {
             (Some(config), Some(map)) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .default_headers(map)
                 .build()
                 .unwrap(),
             (Some(config), None) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .build()
                 .unwrap(),
             (None, Some(map)) => ClientBuilder::new().default_headers(map).build().unwrap(),
@@ -143,6 +143,21 @@ mod test {
 
     use super::*;
     use std::str::FromStr;
+
+    #[tokio::test]
+    async fn polling_secure_custom_tls_config() -> Result<()> {
+        let mut url = crate::test::engine_io_server_secure()?;
+        url.set_path("/engine.io/");
+        url.query_pairs_mut()
+            .append_pair("EIO", &crate::ENGINE_IO_VERSION.to_string());
+        let mut transport = PollingTransport::new(url, Some(crate::test::tls_connector()?), None);
+        let handshake = transport.next().await.expect("expected a handshake")?;
+        assert_eq!(
+            crate::Packet::try_from(handshake)?.packet_id,
+            crate::PacketId::Open
+        );
+        Ok(())
+    }
 
     #[tokio::test]
     async fn polling_assembles_chunks_and_uses_updated_session() {

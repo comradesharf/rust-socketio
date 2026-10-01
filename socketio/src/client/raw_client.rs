@@ -423,7 +423,7 @@ mod test {
     use super::*;
     use crate::{ClientBuilder, client::TransportType, payload::Payload};
     use bytes::Bytes;
-    use native_tls::TlsConnector;
+    use rustls::ClientConfig;
     use serde_json::json;
     use std::time::Duration;
 
@@ -479,10 +479,9 @@ mod test {
         // test socket build logic
         let socket_builder = ClientBuilder::new(url);
 
-        let tls_connector = TlsConnector::builder()
-            .use_sni(true)
-            .build()
-            .expect("Found illegal configuration");
+        let tls_connector = ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
 
         let socket = socket_builder
             .namespace("/admin")
@@ -522,10 +521,9 @@ mod test {
         // test socket build logic
         let socket_builder = ClientBuilder::new(url);
 
-        let tls_connector = TlsConnector::builder()
-            .use_sni(true)
-            .build()
-            .expect("Found illegal configuration");
+        let tls_connector = ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
 
         let socket = socket_builder
             .namespace("/admin")

@@ -48,7 +48,7 @@
 //! * on_error
 //! * on_packet
 //!
-//! It is also possible to pass in custom tls configurations via the `TlsConnector` as well
+//! It is also possible to pass in custom tls configurations via the `rustls::ClientConfig` as well
 //! as custom headers for the opening request.
 //!
 //! ## Async version
@@ -102,24 +102,29 @@ pub use packet::{Packet, PacketId};
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
-    use native_tls::TlsConnector;
+    use rustls::ClientConfig;
     const CERT_PATH: &str = "../ci/cert/ca.crt";
-    use native_tls::Certificate;
+    use rustls::{
+        RootCertStore,
+        pki_types::{CertificateDer, pem::PemObject},
+    };
     use std::fs::File;
     use std::io::Read;
 
-    pub(crate) fn tls_connector() -> error::Result<TlsConnector> {
+    pub(crate) fn tls_connector() -> error::Result<ClientConfig> {
         let cert_path = std::env::var("CA_CERT_PATH").unwrap_or_else(|_| CERT_PATH.to_owned());
         let mut cert_file = File::open(cert_path)?;
         let mut buf = vec![];
         cert_file.read_to_end(&mut buf)?;
-        let cert: Certificate = Certificate::from_pem(&buf[..]).unwrap();
-        Ok(TlsConnector::builder()
-            // ONLY USE FOR TESTING!
-            .danger_accept_invalid_hostnames(true)
-            .add_root_certificate(cert)
-            .build()
-            .unwrap())
+        let mut roots = RootCertStore::empty();
+        for cert in CertificateDer::pem_slice_iter(&buf) {
+            roots
+                .add(cert.map_err(std::io::Error::other)?)
+                .map_err(std::io::Error::other)?;
+        }
+        Ok(ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth())
     }
     /// The `engine.io` server for testing runs on port 4201
     const SERVER_URL: &str = "http://localhost:4201";

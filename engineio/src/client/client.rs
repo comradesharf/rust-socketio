@@ -9,7 +9,7 @@ use crate::header::HeaderMap;
 use crate::packet::{HandshakePacket, Packet, PacketId};
 use crate::transports::{PollingTransport, WebsocketSecureTransport, WebsocketTransport};
 use bytes::Bytes;
-use native_tls::TlsConnector;
+use rustls::ClientConfig;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fmt::Debug;
@@ -30,7 +30,7 @@ pub struct Client {
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
     url: Url,
-    tls_config: Option<TlsConnector>,
+    tls_config: Option<ClientConfig>,
     headers: Option<HeaderMap>,
     handshake: Option<HandshakePacket>,
     on_error: OptionalCallback<String>,
@@ -64,7 +64,7 @@ impl ClientBuilder {
     }
 
     /// Specify transport's tls config
-    pub fn tls_config(mut self, tls_config: TlsConnector) -> Self {
+    pub fn tls_config(mut self, tls_config: ClientConfig) -> Self {
         self.tls_config = Some(tls_config);
         self
     }
@@ -655,10 +655,9 @@ mod test {
 
         let _ = builder(url.clone())
             .tls_config(
-                TlsConnector::builder()
-                    .danger_accept_invalid_certs(true)
-                    .build()
-                    .unwrap(),
+                ClientConfig::builder()
+                    .with_root_certificates(rustls::RootCertStore::empty())
+                    .with_no_client_auth(),
             )
             .build()?;
         let _ = builder(url).headers(headers).build()?;
