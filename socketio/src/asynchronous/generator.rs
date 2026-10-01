@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
 use crate::error::Result;
-use futures_util::{ready, FutureExt, Stream, StreamExt};
+use futures_util::{FutureExt, Stream, StreamExt, ready};
 use tokio::sync::Mutex;
 
 /// A handy type alias for a pinned + boxed Stream trait object that iterates

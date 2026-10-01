@@ -8,7 +8,7 @@ use rust_engineio::{
 use std::collections::HashMap;
 use url::Url;
 
-use crate::{error::Result, Event, Payload, TransportType};
+use crate::{Event, Payload, TransportType, error::Result};
 
 use super::{
     callback::{

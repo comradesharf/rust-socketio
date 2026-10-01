@@ -1,14 +1,14 @@
 use std::{ops::DerefMut, pin::Pin, sync::Arc};
 
-use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
-use futures_util::{future::BoxFuture, stream, Stream, StreamExt};
+use backoff::{ExponentialBackoffBuilder, backoff::Backoff};
+use futures_util::{Stream, StreamExt, future::BoxFuture, stream};
 use log::{error, trace};
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use rust_engineio::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
 use tokio::{
     sync::RwLock,
-    time::{sleep, Duration, Instant},
+    time::{Duration, Instant, sleep},
 };
 
 use super::{
@@ -17,10 +17,10 @@ use super::{
     callback::{Callback, DynAsyncCallback},
 };
 use crate::{
+    CloseReason, Event, Payload,
     asynchronous::socket::Socket as InnerSocket,
     error::{Error, Result},
     packet::{Packet, PacketId},
-    CloseReason, Event, Payload,
 };
 
 #[derive(Default)]
@@ -458,7 +458,9 @@ impl Client {
                             }
                         }
                     } else {
-                        trace!("Received an Ack that is now timed out (elapsed time was longer than specified duration)");
+                        trace!(
+                            "Received an Ack that is now timed out (elapsed time was longer than specified duration)"
+                        );
                     }
                 }
             }
@@ -602,8 +604,8 @@ mod test {
 
     use std::{
         sync::{
-            atomic::{AtomicUsize, Ordering},
             Arc,
+            atomic::{AtomicUsize, Ordering},
         },
         time::Duration,
     };
@@ -614,18 +616,18 @@ mod test {
     use serde_json::json;
     use serial_test::serial;
     use tokio::{
-        sync::{mpsc, Mutex},
+        sync::{Mutex, mpsc},
         time::{sleep, timeout},
     };
 
     use crate::{
+        CloseReason, Event, Payload, TransportType,
         asynchronous::{
-            client::{builder::ClientBuilder, client::Client},
             ReconnectSettings,
+            client::{builder::ClientBuilder, client::Client},
         },
         error::Result,
         packet::{Packet, PacketId},
-        CloseReason, Event, Payload, TransportType,
     };
 
     #[tokio::test]
@@ -745,24 +747,28 @@ mod test {
 
         assert!(socket.emit("message", json!("Hello World")).await.is_ok());
 
-        assert!(socket
-            .emit("binary", Bytes::from_static(&[46, 88]))
-            .await
-            .is_ok());
+        assert!(
+            socket
+                .emit("binary", Bytes::from_static(&[46, 88]))
+                .await
+                .is_ok()
+        );
 
-        assert!(socket
-            .emit_with_ack(
-                "binary",
-                json!("pls ack"),
-                Duration::from_secs(1),
-                |payload, _| async move {
-                    println!("Yehaa the ack got acked");
-                    println!("With data: {:#?}", payload);
-                }
-                .boxed()
-            )
-            .await
-            .is_ok());
+        assert!(
+            socket
+                .emit_with_ack(
+                    "binary",
+                    json!("pls ack"),
+                    Duration::from_secs(1),
+                    |payload, _| async move {
+                        println!("Yehaa the ack got acked");
+                        println!("With data: {:#?}", payload);
+                    }
+                    .boxed()
+                )
+                .await
+                .is_ok()
+        );
 
         sleep(Duration::from_secs(2)).await;
 
@@ -904,24 +910,28 @@ mod test {
 
         assert!(socket.emit("message", json!("Hello World")).await.is_ok());
 
-        assert!(socket
-            .emit("binary", Bytes::from_static(&[46, 88]))
-            .await
-            .is_ok());
+        assert!(
+            socket
+                .emit("binary", Bytes::from_static(&[46, 88]))
+                .await
+                .is_ok()
+        );
 
-        assert!(socket
-            .emit_with_ack(
-                "binary",
-                json!("pls ack"),
-                Duration::from_secs(1),
-                |payload, _| async move {
-                    println!("Yehaa the ack got acked");
-                    println!("With data: {:#?}", payload);
-                }
-                .boxed()
-            )
-            .await
-            .is_ok());
+        assert!(
+            socket
+                .emit_with_ack(
+                    "binary",
+                    json!("pls ack"),
+                    Duration::from_secs(1),
+                    |payload, _| async move {
+                        println!("Yehaa the ack got acked");
+                        println!("With data: {:#?}", payload);
+                    }
+                    .boxed()
+                )
+                .await
+                .is_ok()
+        );
 
         test_socketio_socket(socket, "/admin".to_owned()).await
     }
@@ -1207,15 +1217,17 @@ mod test {
             .boxed()
         };
 
-        assert!(socket
-            .emit_with_ack(
-                "test",
-                Payload::from("123".to_owned()),
-                Duration::from_secs(10),
-                cb
-            )
-            .await
-            .is_ok());
+        assert!(
+            socket
+                .emit_with_ack(
+                    "test",
+                    Payload::from("123".to_owned()),
+                    Duration::from_secs(10),
+                    cb
+                )
+                .await
+                .is_ok()
+        );
 
         let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
 

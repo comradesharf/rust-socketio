@@ -5,13 +5,13 @@ use std::{
 
 use super::{ClientBuilder, RawClient};
 use crate::{
+    Error,
     error::Result,
     packet::{Packet, PacketId},
-    Error,
 };
 pub(crate) use crate::{event::Event, payload::Payload};
 use backoff::ExponentialBackoff;
-use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
+use backoff::{ExponentialBackoffBuilder, backoff::Backoff};
 
 #[derive(Clone)]
 pub struct Client {
@@ -275,8 +275,8 @@ mod test {
     };
 
     use super::*;
-    use crate::error::Result;
     use crate::ClientBuilder;
+    use crate::error::Result;
     use serde_json::json;
     use serial_test::serial;
     use std::time::{Duration, SystemTime};

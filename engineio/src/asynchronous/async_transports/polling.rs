@@ -1,7 +1,7 @@
 use adler32::adler32;
 use async_stream::try_stream;
 use async_trait::async_trait;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use bytes::{BufMut, Bytes, BytesMut};
 use futures_util::{Stream, StreamExt};
 use http::HeaderMap;
@@ -14,7 +14,7 @@ use tokio::sync::RwLock;
 use url::Url;
 
 use crate::asynchronous::generator::StreamGenerator;
-use crate::{asynchronous::transport::AsyncTransport, error::Result, Error};
+use crate::{Error, asynchronous::transport::AsyncTransport, error::Result};
 
 /// An asynchronous polling type. Makes use of the nonblocking reqwest types and
 /// methods.

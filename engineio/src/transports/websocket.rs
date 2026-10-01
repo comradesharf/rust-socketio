@@ -1,10 +1,10 @@
 use crate::{
+    Error,
     asynchronous::{
         async_transports::WebsocketTransport as AsyncWebsocketTransport, transport::AsyncTransport,
     },
     error::Result,
     transport::Transport,
-    Error,
 };
 use bytes::Bytes;
 use http::HeaderMap;

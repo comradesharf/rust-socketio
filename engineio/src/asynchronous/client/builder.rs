@@ -1,4 +1,5 @@
 use crate::{
+    ENGINE_IO_VERSION, Error, Packet,
     asynchronous::{
         async_socket::Socket as InnerSocket,
         async_transports::{PollingTransport, WebsocketSecureTransport, WebsocketTransport},
@@ -8,10 +9,9 @@ use crate::{
     error::Result,
     header::HeaderMap,
     packet::HandshakePacket,
-    Error, Packet, ENGINE_IO_VERSION,
 };
 use bytes::Bytes;
-use futures_util::{future::BoxFuture, StreamExt};
+use futures_util::{StreamExt, future::BoxFuture};
 use native_tls::TlsConnector;
 use url::Url;
 

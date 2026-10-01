@@ -1,9 +1,9 @@
 use std::{fmt::Debug, pin::Pin};
 
 use crate::{
+    Packet,
     asynchronous::{async_socket::Socket as InnerSocket, generator::StreamGenerator},
     error::Result,
-    Packet,
 };
 use async_stream::try_stream;
 use futures_util::{Stream, StreamExt};
@@ -92,7 +92,7 @@ impl Debug for Client {
 mod test {
 
     use super::*;
-    use crate::{asynchronous::ClientBuilder, header::HeaderMap, packet::PacketId, Error};
+    use crate::{Error, asynchronous::ClientBuilder, header::HeaderMap, packet::PacketId};
     use bytes::Bytes;
     use futures_util::StreamExt;
     use native_tls::TlsConnector;
@@ -144,19 +144,22 @@ mod test {
         let url = crate::test::engine_io_server()?;
         let mut sut = builder(url.clone()).build().await?;
 
-        assert!(sut
-            .emit(Packet::new(PacketId::Close, Bytes::new()))
-            .await
-            .is_err());
+        assert!(
+            sut.emit(Packet::new(PacketId::Close, Bytes::new()))
+                .await
+                .is_err()
+        );
 
         sut.connect().await?;
 
         assert!(sut.next().await.unwrap().is_ok());
 
-        assert!(builder(Url::parse("fake://fake.fake").unwrap())
-            .build_websocket()
-            .await
-            .is_err());
+        assert!(
+            builder(Url::parse("fake://fake.fake").unwrap())
+                .build_websocket()
+                .await
+                .is_err()
+        );
 
         sut.disconnect().await?;
 
@@ -364,10 +367,12 @@ mod test {
         assert!(Url::parse(illegal_url).is_err());
 
         let invalid_protocol = "file:///tmp/foo";
-        assert!(builder(Url::parse(invalid_protocol).unwrap())
-            .build()
-            .await
-            .is_err());
+        assert!(
+            builder(Url::parse(invalid_protocol).unwrap())
+                .build()
+                .await
+                .is_err()
+        );
 
         let sut = builder(url.clone()).build().await?;
         let _error = sut

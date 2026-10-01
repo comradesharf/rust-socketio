@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::transport::Transport;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use bytes::{BufMut, Bytes, BytesMut};
 use native_tls::TlsConnector;
 use reqwest::{
@@ -138,7 +138,13 @@ mod test {
         let transport =
             PollingTransport::new(Url::from_str(&url.to_string()[..]).unwrap(), None, None);
         url.query_pairs_mut().append_pair("transport", "polling");
-        assert_eq!(format!("PollingTransport {{ client: {:?}, base_url: RwLock {{ data: {:?}, poisoned: false, .. }} }}", transport.client, url), format!("{:?}", transport));
+        assert_eq!(
+            format!(
+                "PollingTransport {{ client: {:?}, base_url: RwLock {{ data: {:?}, poisoned: false, .. }} }}",
+                transport.client, url
+            ),
+            format!("{:?}", transport)
+        );
         let test: Box<dyn Transport> = Box::new(transport);
         assert_eq!(
             format!("Transport(base_url: Ok({:?}))", url),

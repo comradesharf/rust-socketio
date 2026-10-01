@@ -11,8 +11,8 @@ use futures_util::StreamExt;
 use http::HeaderMap;
 use native_tls::TlsConnector;
 use tokio::sync::RwLock;
-use tokio_tungstenite::connect_async_tls_with_config;
 use tokio_tungstenite::Connector;
+use tokio_tungstenite::connect_async_tls_with_config;
 use tungstenite::client::IntoClientRequest;
 use url::Url;
 
