@@ -3,7 +3,7 @@ use std::{ops::DerefMut, pin::Pin, sync::Arc};
 use backoff::{ExponentialBackoffBuilder, backoff::Backoff};
 use futures_util::{Stream, StreamExt, future::BoxFuture, stream};
 use log::{error, trace};
-use rand::{Rng, thread_rng};
+use rand::{RngExt, rng};
 use rust_engineio::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
 use tokio::{
@@ -393,7 +393,7 @@ impl Client {
         E: Into<Event>,
         D: Into<Payload>,
     {
-        let id = thread_rng().gen_range(0..999);
+        let id = rng().random_range(0..999);
         let socket_packet =
             Packet::new_from_payload(data.into(), event.into(), &self.nsp, Some(id))?;
 

@@ -71,8 +71,7 @@
 //!     - error
 //!     - message
 //!     - custom events like "foo", "on_payment", etc.
-//! - send JSON data to the server (via `serde_json` which provides safe
-//! handling).
+//! - send JSON data to the server (via `serde_json` which provides safe handling).
 //! - send JSON data to the server and receive an `ack`.
 //! - send and handle Binary data.
 #![cfg_attr(

@@ -8,4 +8,6 @@ pub use raw_client::RawClient;
 
 /// Internal callback type
 mod callback;
+
+#[allow(clippy::module_inception)]
 mod client;

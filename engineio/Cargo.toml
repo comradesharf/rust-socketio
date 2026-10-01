@@ -55,5 +55,5 @@ default = ["async"]
 async-callbacks = []
 async = ["async-callbacks"]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
+[lints]
+workspace = true

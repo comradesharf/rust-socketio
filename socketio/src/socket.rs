@@ -18,7 +18,6 @@ pub(crate) struct Socket {
 
 impl Socket {
     /// Creates an instance of `Socket`.
-
     pub(super) fn new(engine_client: EngineClient) -> Result<Self> {
         Ok(Socket {
             engine_client: Arc::new(engine_client),

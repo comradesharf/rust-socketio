@@ -1,12 +1,11 @@
 use super::callback::Callback;
 use crate::Error;
-use crate::packet::{Packet, PacketId};
-pub(crate) use crate::{event::CloseReason, event::Event, payload::Payload};
-use rand::{Rng, thread_rng};
-use serde_json::Value;
-
 use crate::client::callback::{SocketAnyCallback, SocketCallback};
 use crate::error::Result;
+use crate::packet::{Packet, PacketId};
+pub(crate) use crate::{event::CloseReason, event::Event, payload::Payload};
+use rand::{RngExt, rng};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
@@ -203,7 +202,7 @@ impl RawClient {
         E: Into<Event>,
         D: Into<Payload>,
     {
-        let id = thread_rng().gen_range(0..999);
+        let id = rng().random_range(0..999);
         let socket_packet =
             Packet::new_from_payload(data.into(), event.into(), &self.nsp, Some(id))?;
 
@@ -242,7 +241,7 @@ impl RawClient {
     }
 
     #[cfg(test)]
-    pub(crate) fn iter(&self) -> Iter {
+    pub(crate) fn iter(&self) -> Iter<'_> {
         Iter { socket: self }
     }
 
@@ -399,10 +398,12 @@ impl RawClient {
     }
 }
 
+#[cfg(test)]
 pub struct Iter<'a> {
     socket: &'a RawClient,
 }
 
+#[cfg(test)]
 impl<'a> Iterator for Iter<'a> {
     type Item = Result<Packet>;
     fn next(&mut self) -> std::option::Option<<Self as std::iter::Iterator>::Item> {
