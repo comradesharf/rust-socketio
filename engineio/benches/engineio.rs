@@ -85,7 +85,8 @@ pub mod tests {
 
 #[cfg(not(feature = "async"))]
 mod criterion_wrappers {
-    use criterion::{black_box, Criterion};
+    use criterion::Criterion;
+    use std::hint::black_box;
 
     use super::*;
 
@@ -203,8 +204,8 @@ mod criterion_wrappers {
 pub mod tests {
     use bytes::Bytes;
     use rust_engineio::{
-        asynchronous::{Client, ClientBuilder},
         Error, Packet, PacketId,
+        asynchronous::{Client, ClientBuilder},
     };
     use url::Url;
 
@@ -247,10 +248,11 @@ pub mod tests {
 
 #[cfg(feature = "async")]
 mod criterion_wrappers {
+    use std::hint::black_box;
     use std::sync::Arc;
 
     use bytes::Bytes;
-    use criterion::{black_box, Criterion};
+    use criterion::Criterion;
     use lazy_static::lazy_static;
     use rust_engineio::{Packet, PacketId};
     use tokio::runtime::{Builder, Runtime};

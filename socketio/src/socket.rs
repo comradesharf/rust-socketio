@@ -3,7 +3,7 @@ use crate::packet::{Packet, PacketId};
 use bytes::Bytes;
 use rust_engineio::{Client as EngineClient, Packet as EnginePacket, PacketId as EnginePacketId};
 use std::convert::TryFrom;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 use std::{fmt::Debug, sync::atomic::Ordering};
 
 use super::{event::Event, payload::Payload};
@@ -18,7 +18,6 @@ pub(crate) struct Socket {
 
 impl Socket {
     /// Creates an instance of `Socket`.
-
     pub(super) fn new(engine_client: EngineClient) -> Result<Self> {
         Ok(Socket {
             engine_client: Arc::new(engine_client),

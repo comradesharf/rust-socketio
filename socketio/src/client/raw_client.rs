@@ -1,12 +1,11 @@
 use super::callback::Callback;
-use crate::packet::{Packet, PacketId};
 use crate::Error;
-pub(crate) use crate::{event::CloseReason, event::Event, payload::Payload};
-use rand::{thread_rng, Rng};
-use serde_json::Value;
-
 use crate::client::callback::{SocketAnyCallback, SocketCallback};
 use crate::error::Result;
+use crate::packet::{Packet, PacketId};
+pub(crate) use crate::{event::CloseReason, event::Event, payload::Payload};
+use rand::{RngExt, rng};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
@@ -203,7 +202,7 @@ impl RawClient {
         E: Into<Event>,
         D: Into<Payload>,
     {
-        let id = thread_rng().gen_range(0..999);
+        let id = rng().random_range(0..999);
         let socket_packet =
             Packet::new_from_payload(data.into(), event.into(), &self.nsp, Some(id))?;
 
@@ -242,7 +241,7 @@ impl RawClient {
     }
 
     #[cfg(test)]
-    pub(crate) fn iter(&self) -> Iter {
+    pub(crate) fn iter(&self) -> Iter<'_> {
         Iter { socket: self }
     }
 
@@ -288,17 +287,17 @@ impl RawClient {
         // If we found a matching ack, call its callback otherwise ignore it.
         // The official implementation just removes the ack id on timeout:
         // https://github.com/socketio/socket.io-client/blob/main/lib/socket.ts#L467-L495
-        if let Some(mut ack) = outstanding_ack {
-            if ack.time_started.elapsed() < ack.timeout {
-                if let Some(ref payload) = socket_packet.data {
-                    ack.callback.deref_mut()(Payload::from(payload.to_owned()), self.clone());
-                }
+        if let Some(mut ack) = outstanding_ack
+            && ack.time_started.elapsed() < ack.timeout
+        {
+            if let Some(ref payload) = socket_packet.data {
+                ack.callback.deref_mut()(Payload::from(payload.to_owned()), self.clone());
+            }
 
-                if let Some(ref attachments) = socket_packet.attachments {
-                    if let Some(payload) = attachments.first() {
-                        ack.callback.deref_mut()(Payload::Binary(payload.to_owned()), self.clone());
-                    }
-                }
+            if let Some(ref attachments) = socket_packet.attachments
+                && let Some(payload) = attachments.first()
+            {
+                ack.callback.deref_mut()(Payload::Binary(payload.to_owned()), self.clone());
             }
         }
 
@@ -314,10 +313,10 @@ impl RawClient {
             Event::Message
         };
 
-        if let Some(attachments) = &packet.attachments {
-            if let Some(binary_payload) = attachments.first() {
-                self.callback(&event, Payload::Binary(binary_payload.to_owned()))?;
-            }
+        if let Some(attachments) = &packet.attachments
+            && let Some(binary_payload) = attachments.first()
+        {
+            self.callback(&event, Payload::Binary(binary_payload.to_owned()))?;
         }
         Ok(())
     }
@@ -399,10 +398,12 @@ impl RawClient {
     }
 }
 
+#[cfg(test)]
 pub struct Iter<'a> {
     socket: &'a RawClient,
 }
 
+#[cfg(test)]
 impl<'a> Iterator for Iter<'a> {
     type Item = Result<Packet>;
     fn next(&mut self) -> std::option::Option<<Self as std::iter::Iterator>::Item> {
@@ -420,7 +421,7 @@ mod test {
     use std::thread::sleep;
 
     use super::*;
-    use crate::{client::TransportType, payload::Payload, ClientBuilder};
+    use crate::{ClientBuilder, client::TransportType, payload::Payload};
     use bytes::Bytes;
     use native_tls::TlsConnector;
     use serde_json::json;
@@ -495,17 +496,19 @@ mod test {
 
         assert!(socket.emit("binary", Bytes::from_static(&[46, 88])).is_ok());
 
-        assert!(socket
-            .emit_with_ack(
-                "binary",
-                json!("pls ack"),
-                Duration::from_secs(1),
-                |payload, _| {
-                    println!("Yehaa the ack got acked");
-                    println!("With data: {:#?}", payload);
-                }
-            )
-            .is_ok());
+        assert!(
+            socket
+                .emit_with_ack(
+                    "binary",
+                    json!("pls ack"),
+                    Duration::from_secs(1),
+                    |payload, _| {
+                        println!("Yehaa the ack got acked");
+                        println!("With data: {:#?}", payload);
+                    }
+                )
+                .is_ok()
+        );
 
         sleep(Duration::from_secs(2));
 
@@ -536,17 +539,19 @@ mod test {
 
         assert!(socket.emit("binary", Bytes::from_static(&[46, 88])).is_ok());
 
-        assert!(socket
-            .emit_with_ack(
-                "binary",
-                json!("pls ack"),
-                Duration::from_secs(1),
-                |payload, _| {
-                    println!("Yehaa the ack got acked");
-                    println!("With data: {:#?}", payload);
-                }
-            )
-            .is_ok());
+        assert!(
+            socket
+                .emit_with_ack(
+                    "binary",
+                    json!("pls ack"),
+                    Duration::from_secs(1),
+                    |payload, _| {
+                        println!("Yehaa the ack got acked");
+                        println!("With data: {:#?}", payload);
+                    }
+                )
+                .is_ok()
+        );
 
         test_socketio_socket(socket, "/admin".to_owned())
     }
@@ -777,20 +782,22 @@ mod test {
             )
         );
 
-        assert!(socket
-            .emit_with_ack(
-                "test",
-                Payload::from("123"),
-                Duration::from_secs(10),
-                |message: Payload, _| {
-                    println!("Yehaa! My ack got acked?");
-                    if let Payload::Text(values) = message {
-                        println!("Received ack");
-                        println!("Ack data: {values:#?}");
+        assert!(
+            socket
+                .emit_with_ack(
+                    "test",
+                    Payload::from("123"),
+                    Duration::from_secs(10),
+                    |message: Payload, _| {
+                        println!("Yehaa! My ack got acked?");
+                        if let Payload::Text(values) = message {
+                            println!("Received ack");
+                            println!("Ack data: {values:#?}");
+                        }
                     }
-                }
-            )
-            .is_ok());
+                )
+                .is_ok()
+        );
 
         Ok(())
     }

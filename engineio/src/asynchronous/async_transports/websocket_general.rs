@@ -1,12 +1,10 @@
-use std::{borrow::Cow, str::from_utf8, sync::Arc, task::Poll};
-
-use crate::{error::Result, Error, Packet, PacketId};
+use crate::{Error, Packet, PacketId, error::Result};
 use bytes::{BufMut, Bytes, BytesMut};
 use futures_util::{
-    ready,
+    FutureExt, SinkExt, Stream, StreamExt, ready,
     stream::{SplitSink, SplitStream},
-    FutureExt, SinkExt, Stream, StreamExt,
 };
+use std::{str::from_utf8, sync::Arc, task::Poll};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tungstenite::Message;
@@ -42,9 +40,10 @@ impl AsyncWebsocketGeneralTransport {
         let mut sender = self.sender.lock().await;
 
         sender
-            .send(Message::text(Cow::Borrowed(from_utf8(&Bytes::from(
-                Packet::new(PacketId::Ping, Bytes::from("probe")),
-            ))?)))
+            .send(Message::text(from_utf8(&Bytes::from(Packet::new(
+                PacketId::Ping,
+                Bytes::from("probe"),
+            )))?))
             .await?;
 
         let msg = receiver
@@ -57,9 +56,10 @@ impl AsyncWebsocketGeneralTransport {
         }
 
         sender
-            .send(Message::text(Cow::Borrowed(from_utf8(&Bytes::from(
-                Packet::new(PacketId::Upgrade, Bytes::from("")),
-            ))?)))
+            .send(Message::text(from_utf8(&Bytes::from(Packet::new(
+                PacketId::Upgrade,
+                Bytes::from(""),
+            )))?))
             .await?;
 
         Ok(())
@@ -69,9 +69,9 @@ impl AsyncWebsocketGeneralTransport {
         let mut sender = self.sender.lock().await;
 
         let message = if is_binary_att {
-            Message::binary(Cow::Borrowed(data.as_ref()))
+            Message::binary(data)
         } else {
-            Message::text(Cow::Borrowed(std::str::from_utf8(data.as_ref())?))
+            Message::text(from_utf8(data.as_ref())?)
         };
 
         sender.send(message).await?;
@@ -107,7 +107,7 @@ impl Stream for AsyncWebsocketGeneralTransport {
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
+    ) -> Poll<Option<Self::Item>> {
         loop {
             let mut lock = ready!(Box::pin(self.receiver.lock()).poll_unpin(cx));
             let next = ready!(lock.poll_next_unpin(cx));

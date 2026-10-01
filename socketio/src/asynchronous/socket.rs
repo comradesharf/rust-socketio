@@ -1,21 +1,21 @@
 use super::generator::StreamGenerator;
 use crate::{
+    Error, Event, Payload,
     error::Result,
     packet::{Packet, PacketId},
-    Error, Event, Payload,
 };
 use async_stream::try_stream;
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 use rust_engineio::{
-    asynchronous::Client as EngineClient, Packet as EnginePacket, PacketId as EnginePacketId,
+    Packet as EnginePacket, PacketId as EnginePacketId, asynchronous::Client as EngineClient,
 };
 use std::{
     fmt::Debug,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 

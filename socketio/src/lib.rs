@@ -71,8 +71,7 @@
 //!     - error
 //!     - message
 //!     - custom events like "foo", "on_payment", etc.
-//! - send JSON data to the server (via `serde_json` which provides safe
-//! handling).
+//! - send JSON data to the server (via `serde_json` which provides safe handling).
 //! - send JSON data to the server and receive an `ack`.
 //! - send and handle Binary data.
 #![cfg_attr(
@@ -176,7 +175,7 @@ pub(crate) mod packet;
 /// Defines the types of payload (binary or string), that
 /// could be sent or received.
 pub mod payload;
-pub(self) mod socket;
+mod socket;
 
 /// Deprecated import since 0.3.0-alpha-2, use Error in the crate root instead.
 /// Contains the error type which will be returned with every result in this

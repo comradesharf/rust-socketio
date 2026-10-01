@@ -1,7 +1,7 @@
 use std::{pin::Pin, sync::Arc};
 
 use crate::error::Result;
-use futures_util::{ready, FutureExt, Stream, StreamExt};
+use futures_util::{FutureExt, Stream, StreamExt, ready};
 use tokio::sync::Mutex;
 
 /// A generator is an internal type that represents a [`Send`] [`futures_util::Stream`]

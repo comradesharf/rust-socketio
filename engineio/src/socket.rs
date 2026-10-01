@@ -9,7 +9,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 use std::{fmt::Debug, sync::atomic::Ordering};
 use std::{
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
     time::Instant,
 };
 

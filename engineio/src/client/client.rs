@@ -3,11 +3,11 @@ use crate::callback::OptionalCallback;
 use crate::socket::DEFAULT_MAX_POLL_TIMEOUT;
 use crate::transport::Transport;
 
+use crate::ENGINE_IO_VERSION;
 use crate::error::{Error, Result};
 use crate::header::HeaderMap;
 use crate::packet::{HandshakePacket, Packet, PacketId};
 use crate::transports::{PollingTransport, WebsocketSecureTransport, WebsocketTransport};
-use crate::ENGINE_IO_VERSION;
 use bytes::Bytes;
 use native_tls::TlsConnector;
 use std::convert::TryFrom;
@@ -353,7 +353,7 @@ impl Client {
         self.socket.is_connected()
     }
 
-    pub fn iter(&self) -> Iter {
+    pub fn iter(&self) -> Iter<'_> {
         Iter { socket: self }
     }
 }
@@ -437,17 +437,20 @@ mod test {
         let url = crate::test::engine_io_server()?;
         let sut = builder(url.clone()).build()?;
 
-        assert!(sut
-            .emit(Packet::new(PacketId::Close, Bytes::new()))
-            .is_err());
+        assert!(
+            sut.emit(Packet::new(PacketId::Close, Bytes::new()))
+                .is_err()
+        );
 
         sut.connect()?;
 
         assert!(sut.poll().is_ok());
 
-        assert!(builder(Url::parse("fake://fake.fake").unwrap())
-            .build_websocket()
-            .is_err());
+        assert!(
+            builder(Url::parse("fake://fake.fake").unwrap())
+                .build_websocket()
+                .is_err()
+        );
 
         Ok(())
     }
@@ -632,9 +635,11 @@ mod test {
         assert!(Url::parse(illegal_url).is_err());
 
         let invalid_protocol = "file:///tmp/foo";
-        assert!(builder(Url::parse(invalid_protocol).unwrap())
-            .build()
-            .is_err());
+        assert!(
+            builder(Url::parse(invalid_protocol).unwrap())
+                .build()
+                .is_err()
+        );
 
         let sut = builder(url.clone()).build()?;
         let _error = sut

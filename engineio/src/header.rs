@@ -1,8 +1,8 @@
 use crate::Error;
 use bytes::Bytes;
 use http::{
-    header::HeaderName as HttpHeaderName, HeaderMap as HttpHeaderMap,
-    HeaderValue as HttpHeaderValue,
+    HeaderMap as HttpHeaderMap, HeaderValue as HttpHeaderValue,
+    header::HeaderName as HttpHeaderName,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;

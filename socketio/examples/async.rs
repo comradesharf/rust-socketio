@@ -1,7 +1,7 @@
 use futures_util::FutureExt;
 use rust_socketio::{
-    asynchronous::{Client, ClientBuilder},
     Payload,
+    asynchronous::{Client, ClientBuilder},
 };
 use serde_json::json;
 use std::time::Duration;
