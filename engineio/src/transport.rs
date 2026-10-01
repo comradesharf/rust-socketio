@@ -1,9 +1,20 @@
 use super::transports::{PollingTransport, WebsocketSecureTransport, WebsocketTransport};
 use crate::error::Result;
-use adler32::adler32;
 use bytes::Bytes;
-use std::time::{Duration, SystemTime};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
 use url::Url;
+
+// A monotonic token avoids formatting and hashing the clock on every request.
+// Cache busting requires uniqueness, not a wall-clock timestamp.
+pub(crate) fn cache_busted_url(mut url: Url) -> Url {
+    static NEXT_REQUEST: AtomicU64 = AtomicU64::new(0);
+    let token = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
+    url.query_pairs_mut().append_pair("t", &token.to_string());
+    url
+}
 
 pub trait Transport {
     /// Sends a packet to the server. This optionally handles sending of a
@@ -24,11 +35,7 @@ pub trait Transport {
 
     /// Full query address
     fn address(&self) -> Result<Url> {
-        let reader = format!("{:#?}", SystemTime::now());
-        let hash = adler32(reader.as_bytes()).unwrap();
-        let mut url = self.base_url()?;
-        url.query_pairs_mut().append_pair("t", &hash.to_string());
-        Ok(url)
+        Ok(cache_busted_url(self.base_url()?))
     }
 }
 

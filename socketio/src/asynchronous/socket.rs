@@ -136,7 +136,7 @@ impl Socket {
         // Only handle attachments if there are any
         if socket_packet.attachment_count > 0 {
             let mut attachments_left = socket_packet.attachment_count;
-            let mut attachments = Vec::new();
+            let mut attachments = Vec::with_capacity(socket_packet.attachment_count as usize);
             while attachments_left > 0 {
                 // TODO: This is not nice! Find a different way to peek the next element while mapping the stream
                 let next = client.next().await.unwrap();

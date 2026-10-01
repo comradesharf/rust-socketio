@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "adler32"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aae1277d39aeec15cb388266ecc24b11c80469deae6067e17a1a7aa9e5c1f234"
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1574,7 +1568,6 @@ dependencies = [
 name = "rust_engineio"
 version = "0.6.0"
 dependencies = [
- "adler32",
  "async-stream",
  "async-trait",
  "base64",

@@ -1,7 +1,6 @@
 use crate::error::{Error, Result};
 use crate::transport::Transport;
-use base64::{Engine as _, engine::general_purpose};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use native_tls::TlsConnector;
 use reqwest::{
     blocking::{Client, ClientBuilder},
@@ -51,14 +50,7 @@ impl PollingTransport {
 impl Transport for PollingTransport {
     fn emit(&self, data: Bytes, is_binary_att: bool) -> Result<()> {
         let data_to_send = if is_binary_att {
-            // the binary attachment gets `base64` encoded
-            let mut packet_bytes = BytesMut::with_capacity(data.len() + 1);
-            packet_bytes.put_u8(b'b');
-
-            let encoded_data = general_purpose::STANDARD.encode(data);
-            packet_bytes.put(encoded_data.as_bytes());
-
-            packet_bytes.freeze()
+            Bytes::from(crate::Packet::new(crate::PacketId::MessageBinary, data))
         } else {
             data
         };

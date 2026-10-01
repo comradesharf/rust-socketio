@@ -6,8 +6,8 @@ build:
 keys:
 	@./ci/keygen.sh node-engine-io-secure 127.0.0.1
 
-test-fast: keys
-	@cargo test --verbose --package rust_socketio --lib -- engineio::packet && cargo test --verbose --package rust_socketio --lib -- socketio::packet
+test-fast:
+	@cargo test --workspace --all-features --lib packet::
 
 run-test-servers:
 	cd ci && docker build -t test_suite:latest . && cd ..
@@ -18,7 +18,7 @@ test-all: keys run-test-servers
 	docker stop socketio_test
 
 clippy:
-	@cargo clippy --verbose --all-features
+	@cargo clippy --workspace --all-features --all-targets -- -D warnings
 
 format:
 	@cargo fmt --all -- --check

@@ -40,7 +40,7 @@ pub mod util {
     }
 }
 
-/// sync benches
+// sync benches
 
 #[cfg(not(feature = "async"))]
 pub mod tests {
@@ -146,7 +146,7 @@ mod criterion_wrappers {
     }
 
     pub fn criterion_engine_io_packet(c: &mut Criterion) {
-        c.bench_function("engine io packet", |b| b.iter(|| engine_io_packet()));
+        c.bench_function("engine io packet", |b| b.iter(engine_io_packet));
     }
 
     pub fn criterion_engine_io_emit_polling(c: &mut Criterion) {
@@ -198,7 +198,7 @@ mod criterion_wrappers {
     }
 }
 
-/// async benches
+// async benches
 
 #[cfg(feature = "async")]
 pub mod tests {

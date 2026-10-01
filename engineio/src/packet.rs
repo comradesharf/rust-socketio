@@ -141,17 +141,35 @@ impl TryFrom<Bytes> for Packet {
     }
 }
 
-impl From<Packet> for Bytes {
-    /// Encodes a `Packet` into an `u8` byte stream.
-    fn from(packet: Packet) -> Self {
-        let mut result = BytesMut::with_capacity(packet.data.len() + 1);
-        result.put_u8(packet.packet_id.to_string_byte());
-        if packet.packet_id == PacketId::MessageBinary {
-            result.extend(general_purpose::STANDARD.encode(packet.data).into_bytes());
+impl Packet {
+    fn encoded_len(&self) -> usize {
+        1 + if self.packet_id == PacketId::MessageBinary {
+            base64::encoded_len(self.data.len(), true).expect("packet too large")
         } else {
-            result.put(packet.data);
+            self.data.len()
         }
-        result.freeze()
+    }
+
+    fn encode_into(&self, buffer: &mut BytesMut) {
+        buffer.put_u8(self.packet_id.to_string_byte());
+        if self.packet_id == PacketId::MessageBinary {
+            let start = buffer.len();
+            buffer.resize(start + self.encoded_len() - 1, 0);
+            general_purpose::STANDARD
+                .encode_slice(&self.data, &mut buffer[start..])
+                .expect("buffer has the exact base64 encoded length");
+        } else {
+            buffer.extend_from_slice(&self.data);
+        }
+    }
+}
+
+impl From<Packet> for Bytes {
+    /// Encodes a packet directly into a single allocation.
+    fn from(packet: Packet) -> Self {
+        let mut buffer = BytesMut::with_capacity(packet.encoded_len());
+        packet.encode_into(&mut buffer);
+        buffer.freeze()
     }
 }
 
@@ -160,7 +178,7 @@ pub(crate) struct Payload(Vec<Packet>);
 
 impl Payload {
     // see https://en.wikipedia.org/wiki/Delimiter#ASCII_delimited_text
-    const SEPARATOR: char = '\x1e';
+    const SEPARATOR: u8 = b'\x1e';
 
     #[cfg(test)]
     pub fn len(&self) -> usize {
@@ -171,10 +189,10 @@ impl Payload {
 impl TryFrom<Bytes> for Payload {
     type Error = Error;
     /// Decodes a `payload` which in the `engine.io` context means a chain of normal
-    /// packets separated by a certain SEPARATOR, in this case the delimiter `\x30`.
+    /// packets separated by a certain SEPARATOR, in this case the delimiter `\x1e`.
     fn try_from(payload: Bytes) -> Result<Self> {
         payload
-            .split(|&c| c as char == Self::SEPARATOR)
+            .split(|&c| c == Self::SEPARATOR)
             .map(|slice| Packet::try_from(payload.slice_ref(slice)))
             .collect::<Result<Vec<_>>>()
             .map(Self)
@@ -185,17 +203,18 @@ impl TryFrom<Payload> for Bytes {
     type Error = Error;
     /// Encodes a payload. Payload in the `engine.io` context means a chain of
     /// normal `packets` separated by a SEPARATOR, in this case the delimiter
-    /// `\x30`.
+    /// `\x1e`.
     fn try_from(packets: Payload) -> Result<Self> {
-        let mut buf = BytesMut::new();
-        for packet in packets {
-            // at the moment no base64 encoding is used
-            buf.extend(Bytes::from(packet.clone()));
-            buf.put_u8(Payload::SEPARATOR as u8);
+        let capacity = packets.0.iter().map(Packet::encoded_len).sum::<usize>()
+            + packets.0.len().saturating_sub(1);
+        let mut buf = BytesMut::with_capacity(capacity);
+        for (index, packet) in packets.0.iter().enumerate() {
+            if index > 0 {
+                buf.put_u8(Payload::SEPARATOR);
+            }
+            packet.encode_into(&mut buf);
         }
 
-        // remove the last separator
-        let _ = buf.split_off(buf.len() - 1);
         Ok(buf.freeze())
     }
 }
@@ -232,6 +251,29 @@ impl Index<usize> for Payload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_and_mixed_payload_encoding() {
+        assert!(Bytes::try_from(Payload(Vec::new())).unwrap().is_empty());
+        let packets = vec![
+            Packet::new(PacketId::Ping, Bytes::new()),
+            Packet::new(PacketId::Message, Bytes::from_static(b"hello")),
+            Packet::new(PacketId::MessageBinary, Bytes::from_static(b"\x00\xff")),
+        ];
+        let encoded = Bytes::try_from(Payload(packets.clone())).unwrap();
+        assert_eq!(encoded, Bytes::from_static(b"2\x1e4hello\x1ebAP8="));
+        assert_eq!(Payload::try_from(encoded).unwrap().0, packets);
+    }
+
+    #[test]
+    fn binary_encoding_handles_all_padding_lengths() {
+        for size in [0, 1, 2, 3, 4, 1024, 65536] {
+            let packet = Packet::new(PacketId::MessageBinary, vec![0xff; size]);
+            let encoded = Bytes::from(packet.clone());
+            assert_eq!(encoded.len(), 1 + base64::encoded_len(size, true).unwrap());
+            assert_eq!(Packet::try_from(encoded).unwrap(), packet);
+        }
+    }
 
     #[test]
     fn test_packet_error() {

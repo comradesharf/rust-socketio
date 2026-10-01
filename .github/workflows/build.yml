@@ -38,6 +38,10 @@ jobs:
       - name: Build
         run: cargo build --verbose --all-features
       - name: Linting
-        run: cargo clippy --verbose --all-features
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      - name: Lint without default features
+        run: |
+          cargo clippy -p rust_engineio --no-default-features --all-targets -- -D warnings
+          cargo clippy -p rust_socketio --no-default-features --all-targets -- -D warnings
       - name: Check formatting
         run: cargo fmt --all -- --check

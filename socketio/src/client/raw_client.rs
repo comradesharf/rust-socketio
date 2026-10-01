@@ -281,7 +281,7 @@ impl RawClient {
             outstanding_acks
                 .iter()
                 .position(|ack| ack.id == id)
-                .map(|pos| outstanding_acks.remove(pos))
+                .map(|pos| outstanding_acks.swap_remove(pos))
         };
 
         // If we found a matching ack, call its callback otherwise ignore it.

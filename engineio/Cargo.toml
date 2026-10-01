@@ -3,6 +3,7 @@ name = "rust_engineio"
 version = "0.6.0"
 authors = ["Bastian Kersting <bastian@cmbt.de>"]
 edition.workspace = true
+rust-version.workspace = true
 description = "An implementation of a engineio client written in rust."
 readme = "README.md"
 repository = "https://github.com/1c3t3a/rust-socketio"
@@ -17,7 +18,6 @@ all-features = true
 base64 = "0.23.1"
 bytes = "1"
 reqwest = { version = "0.13.5", features = ["blocking", "native-tls", "stream"] }
-adler32 = "1.2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 http = "1.1.0"
@@ -39,6 +39,10 @@ lazy_static = "1.4.0"
 version = "1.40.0"
 # we need the `#[tokio::test]` macro
 features = ["macros"]
+
+[[bench]]
+name = "codec"
+harness = false
 
 [[bench]]
 name = "engineio"

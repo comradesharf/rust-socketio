@@ -186,10 +186,7 @@ impl ClientBuilder {
     #[cfg(feature = "async-callbacks")]
     pub fn on<T: Into<Event>, F>(mut self, event: T, callback: F) -> Self
     where
-        F: for<'a> std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()>
-            + 'static
-            + Send
-            + Sync,
+        F: std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
     {
         self.on
             .insert(event.into(), Callback::<DynAsyncCallback>::new(callback));
@@ -224,10 +221,7 @@ impl ClientBuilder {
     /// ```
     pub fn on_reconnect<F>(mut self, callback: F) -> Self
     where
-        F: for<'a> std::ops::FnMut() -> BoxFuture<'static, ReconnectSettings>
-            + 'static
-            + Send
-            + Sync,
+        F: std::ops::FnMut() -> BoxFuture<'static, ReconnectSettings> + 'static + Send + Sync,
     {
         self.on_reconnect = Some(Callback::<DynAsyncReconnectSettingsCallback>::new(callback));
         self
@@ -257,7 +251,7 @@ impl ClientBuilder {
     /// ```
     pub fn on_any<F>(mut self, callback: F) -> Self
     where
-        F: for<'a> FnMut(Event, Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
+        F: FnMut(Event, Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
     {
         self.on_any = Some(Callback::<DynAsyncAnyCallback>::new(callback));
         self

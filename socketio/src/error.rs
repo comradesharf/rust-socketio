@@ -76,7 +76,7 @@ mod tests {
         assert!(matches!(Error::InvalidPoisonedLock(), _error));
 
         let _io_error = std::io::Error::from(Error::IncompletePacket());
-        let _error = std::io::Error::new(std::io::ErrorKind::Other, Error::IncompletePacket());
+        let _error = std::io::Error::other(Error::IncompletePacket());
         assert!(matches!(_io_error, _error));
     }
 }

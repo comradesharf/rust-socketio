@@ -84,8 +84,7 @@ mod tests {
         assert!(matches!(Error::InvalidPoisonedLock(), _error));
 
         let _io_error = std::io::Error::from(Error::IllegalWebsocketUpgrade());
-        let _error =
-            std::io::Error::new(std::io::ErrorKind::Other, Error::IllegalWebsocketUpgrade());
+        let _error = std::io::Error::other(Error::IllegalWebsocketUpgrade());
         assert!(matches!(_io_error, _error));
     }
 }
