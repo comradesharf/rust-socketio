@@ -49,7 +49,7 @@ common engine.io event callbacks:
 * on_error
 * on_packet
 
-It is also possible to pass in custom tls configurations via the `TlsConnector` as well
+It is also possible to pass in custom tls configurations via the `rustls::ClientConfig` as well
 as custom headers for the opening request.
 
 ## Documentation

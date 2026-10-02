@@ -1,14 +1,11 @@
-use adler32::adler32;
 use async_stream::try_stream;
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose};
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use futures_util::{Stream, StreamExt};
 use http::HeaderMap;
-use native_tls::TlsConnector;
-use reqwest::{Client, ClientBuilder, Response};
+use reqwest::{Client, ClientBuilder};
+use rustls::ClientConfig;
 use std::fmt::Debug;
-use std::time::SystemTime;
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::RwLock;
 use url::Url;
@@ -28,17 +25,17 @@ pub struct PollingTransport {
 impl PollingTransport {
     pub fn new(
         base_url: Url,
-        tls_config: Option<TlsConnector>,
+        tls_config: Option<ClientConfig>,
         opening_headers: Option<HeaderMap>,
     ) -> Self {
         let client = match (tls_config, opening_headers) {
             (Some(config), Some(map)) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .default_headers(map)
                 .build()
                 .unwrap(),
             (Some(config), None) => ClientBuilder::new()
-                .use_preconfigured_tls(config)
+                .tls_backend_preconfigured(config)
                 .build()
                 .unwrap(),
             (None, Some(map)) => ClientBuilder::new().default_headers(map).build().unwrap(),
@@ -48,41 +45,30 @@ impl PollingTransport {
         let mut url = base_url;
         url.query_pairs_mut().append_pair("transport", "polling");
 
+        let base_url = Arc::new(RwLock::new(url));
         PollingTransport {
             client: client.clone(),
-            base_url: Arc::new(RwLock::new(url.clone())),
-            generator: StreamGenerator::new(Self::stream(url, client)),
-        }
-    }
-
-    fn address(mut url: Url) -> Result<Url> {
-        let reader = format!("{:#?}", SystemTime::now());
-        let hash = adler32(reader.as_bytes()).unwrap();
-        url.query_pairs_mut().append_pair("t", &hash.to_string());
-        Ok(url)
-    }
-
-    fn send_request(url: Url, client: Client) -> impl Stream<Item = Result<Response>> {
-        try_stream! {
-            let address = Self::address(url);
-
-            yield client
-                .get(address?)
-                .send().await?
+            base_url: Arc::clone(&base_url),
+            generator: StreamGenerator::new(Self::stream(base_url, client)),
         }
     }
 
     fn stream(
-        url: Url,
+        base_url: Arc<RwLock<Url>>,
         client: Client,
     ) -> Pin<Box<dyn Stream<Item = Result<Bytes>> + 'static + Send>> {
         Box::pin(try_stream! {
             loop {
-                for await elem in Self::send_request(url.clone(), client.clone()) {
-                    for await bytes in elem?.bytes_stream() {
-                        yield bytes?;
-                    }
+                // Clone under the lock, then release it before network I/O.
+                let url = crate::transport::cache_busted_url(base_url.read().await.clone());
+                let response = client.get(url).send().await?;
+                let status = response.status().as_u16();
+                if status != 200 {
+                    Err(Error::IncompleteHttp(status))?;
                 }
+                // HTTP chunks can split packet headers, UTF-8, or base64 data.
+                // An Engine.IO polling payload is the entire response body.
+                yield response.bytes().await?;
             }
         })
     }
@@ -103,14 +89,7 @@ impl Stream for PollingTransport {
 impl AsyncTransport for PollingTransport {
     async fn emit(&self, data: Bytes, is_binary_att: bool) -> Result<()> {
         let data_to_send = if is_binary_att {
-            // the binary attachment gets `base64` encoded
-            let mut packet_bytes = BytesMut::with_capacity(data.len() + 1);
-            packet_bytes.put_u8(b'b');
-
-            let encoded_data = general_purpose::STANDARD.encode(data);
-            packet_bytes.put(encoded_data.as_bytes());
-
-            packet_bytes.freeze()
+            Bytes::from(crate::Packet::new(crate::PacketId::MessageBinary, data))
         } else {
             data
         };
@@ -164,6 +143,110 @@ mod test {
 
     use super::*;
     use std::str::FromStr;
+
+    #[tokio::test]
+    async fn polling_secure_custom_tls_config() -> Result<()> {
+        let mut url = crate::test::engine_io_server_secure()?;
+        url.set_path("/engine.io/");
+        url.query_pairs_mut()
+            .append_pair("EIO", &crate::ENGINE_IO_VERSION.to_string());
+        let mut transport = PollingTransport::new(url, Some(crate::test::tls_connector()?), None);
+        let handshake = transport.next().await.expect("expected a handshake")?;
+        assert_eq!(
+            crate::Packet::try_from(handshake)?.packet_id,
+            crate::PacketId::Open
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn polling_assembles_chunks_and_uses_updated_session() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            time::Duration,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = Url::parse(&format!(
+            "http://{}/engine.io/",
+            listener.local_addr().unwrap()
+        ))
+        .unwrap();
+        let server = std::thread::spawn(move || {
+            for request_index in 0..2 {
+                let (mut connection, _) = listener.accept().unwrap();
+                connection
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0];
+                while !request.ends_with(b"\r\n\r\n") {
+                    connection.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                if request_index == 1 {
+                    assert!(
+                        String::from_utf8(request)
+                            .unwrap()
+                            .contains("sid=current-session")
+                    );
+                }
+                connection.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n4h\r\n").unwrap();
+                connection.flush().unwrap();
+                std::thread::sleep(Duration::from_millis(20));
+                connection.write_all(b"4\r\nello\r\n0\r\n\r\n").unwrap();
+            }
+        });
+        let mut transport = PollingTransport::new(url.clone(), None, None);
+        for request_index in 0..2 {
+            if request_index == 1 {
+                let mut updated = url.clone();
+                updated
+                    .query_pairs_mut()
+                    .append_pair("sid", "current-session");
+                transport.set_base_url(updated).await.unwrap();
+            }
+            let body = tokio::time::timeout(Duration::from_secs(5), transport.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(body, Bytes::from_static(b"4hello"));
+        }
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn polling_rejects_unsuccessful_http_status() {
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+            time::Duration,
+        };
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0];
+            while !request.ends_with(b"\r\n\r\n") {
+                connection.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            connection
+                .write_all(
+                    b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        let mut transport = PollingTransport::new(url, None, None);
+        let result = tokio::time::timeout(Duration::from_secs(5), transport.next())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(result, Err(Error::IncompleteHttp(400))));
+        server.join().unwrap();
+    }
 
     #[tokio::test]
     async fn polling_transport_base_url() -> Result<()> {

@@ -2,9 +2,9 @@ use super::super::{event::Event, payload::Payload};
 use super::callback::Callback;
 use super::client::Client;
 use crate::RawClient;
-use native_tls::TlsConnector;
 use rust_engineio::client::ClientBuilder as EngineIoClientBuilder;
 use rust_engineio::header::{HeaderMap, HeaderValue};
+use rustls::ClientConfig;
 use url::Url;
 
 use crate::client::callback::{SocketAnyCallback, SocketCallback};
@@ -37,7 +37,7 @@ pub struct ClientBuilder {
     on: Arc<Mutex<HashMap<Event, Callback<SocketCallback>>>>,
     on_any: Arc<Mutex<Option<Callback<SocketAnyCallback>>>>,
     namespace: String,
-    tls_config: Option<TlsConnector>,
+    tls_config: Option<ClientConfig>,
     opening_headers: Option<HeaderMap>,
     transport_type: TransportType,
     auth: Option<serde_json::Value>,
@@ -208,17 +208,17 @@ impl ClientBuilder {
         self
     }
 
-    /// Uses a preconfigured TLS connector for secure communication. This configures
+    /// Uses a preconfigured rustls client configuration for secure communication. This configures
     /// both the `polling` as well as the `websocket` transport type.
+    /// Add your trusted CA certificates to the root store before building the configuration.
     /// # Example
     /// ```rust
     /// use rust_socketio::{ClientBuilder, Payload};
-    /// use native_tls::TlsConnector;
+    /// use rustls::ClientConfig;
     ///
-    /// let tls_connector =  TlsConnector::builder()
-    ///            .use_sni(true)
-    ///            .build()
-    ///            .expect("Found illegal configuration");
+    /// let tls_connector =  ClientConfig::builder()
+    ///            .with_root_certificates(rustls::RootCertStore::empty())
+    ///            .with_no_client_auth();
     ///
     /// let socket = ClientBuilder::new("http://localhost:4200/")
     ///     .namespace("/admin")
@@ -227,7 +227,7 @@ impl ClientBuilder {
     ///     .connect();
     ///
     /// ```
-    pub fn tls_config(mut self, tls_config: TlsConnector) -> Self {
+    pub fn tls_config(mut self, tls_config: ClientConfig) -> Self {
         self.tls_config = Some(tls_config);
         self
     }

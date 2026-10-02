@@ -1,7 +1,7 @@
 use rust_socketio::{ClientBuilder, Event, Payload, RawClient};
 use serde_json::json;
 
-fn handle_foo(payload: Payload, socket: RawClient) -> () {
+fn handle_foo(payload: Payload, socket: RawClient) {
     socket.emit("bar", payload).expect("Server unreachable")
 }
 

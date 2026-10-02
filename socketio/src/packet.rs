@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::{Event, Payload};
 use bytes::Bytes;
-use serde::de::IgnoredAny;
+use serde::{Serializer as _, de::IgnoredAny};
 
 use std::convert::TryFrom;
 use std::fmt::Write;
@@ -70,12 +70,18 @@ impl Packet {
                     None,
                 ))
             }
-            Payload::Text(mut data) => {
-                let mut payload_args = vec![serde_json::Value::String(event.to_string())];
-                payload_args.append(&mut data);
-                drop(data);
-
-                let payload = serde_json::Value::Array(payload_args).to_string();
+            Payload::Text(data) => {
+                // Serialize a borrowed view of the arguments, without a second Vec.
+                use serde::ser::SerializeSeq;
+                let mut buffer = Vec::new();
+                let mut serializer = serde_json::Serializer::new(&mut buffer);
+                let mut args = serializer.serialize_seq(Some(data.len() + 1))?;
+                args.serialize_element(event.as_str())?;
+                for value in &data {
+                    args.serialize_element(value)?;
+                }
+                args.end()?;
+                let payload = String::from_utf8(buffer).expect("JSON is UTF-8");
 
                 Ok(Packet::new(
                     PacketId::Event,
@@ -159,7 +165,9 @@ impl From<&Packet> for Bytes {
     /// stream as it gets handled and send by it's own logic via the socket.
     fn from(packet: &Packet) -> Bytes {
         // first the packet type
-        let mut buffer = String::new();
+        let mut buffer = String::with_capacity(
+            1 + packet.nsp.len() + packet.data.as_ref().map_or(0, String::len) + 64,
+        );
         buffer.push((packet.packet_type as u8 + b'0') as char);
 
         // eventually a number of attachments, followed by '-'
@@ -240,15 +248,14 @@ impl TryFrom<&Bytes> for Packet {
         }
 
         // id
-        let Some((non_digit_idx, _)) = payload.char_indices().find(|(_, c)| !c.is_ascii_digit())
-        else {
-            return Ok(packet);
-        };
-
+        let non_digit_idx = payload.bytes().take_while(u8::is_ascii_digit).count();
         if non_digit_idx > 0 {
             let (prefix, rest) = payload.split_at(non_digit_idx);
             payload = rest;
             packet.id = Some(prefix.parse().map_err(|_| Error::InvalidPacket())?);
+        }
+        if payload.is_empty() {
+            return Ok(packet);
         }
 
         // validate json
@@ -280,6 +287,40 @@ impl TryFrom<&Bytes> for Packet {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn text_payload_serializes_arguments_in_order() {
+        for values in [
+            vec![],
+            vec![
+                serde_json::json!("escaped\"\n"),
+                serde_json::json!({"nested": [1, null]}),
+            ],
+        ] {
+            let packet = Packet::new_from_payload(
+                Payload::Text(values.clone()),
+                Event::from("event\"\n"),
+                "/",
+                None,
+            )
+            .unwrap();
+            let mut expected = vec![serde_json::json!("event\"\n")];
+            expected.extend(values);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(packet.data.as_deref().unwrap()).unwrap(),
+                serde_json::json!(expected)
+            );
+            assert_eq!(Packet::try_from(Bytes::from(&packet)).unwrap(), packet);
+        }
+    }
+
+    #[test]
+    fn header_only_ack_preserves_id_and_rejects_overflow() {
+        let packet = Packet::try_from(Bytes::from_static(b"3123")).unwrap();
+        assert_eq!(packet.id, Some(123));
+        assert_eq!(packet.data, None);
+        assert!(Packet::try_from(Bytes::from_static(b"399999999999999999999")).is_err());
+    }
 
     #[test]
     /// This test suite is taken from the explanation section here:

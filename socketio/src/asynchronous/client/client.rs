@@ -69,7 +69,7 @@ impl ReconnectSettings {
         val: T,
     ) -> &mut Self {
         self.headers
-            .get_or_insert_with(|| HeaderMap::default())
+            .get_or_insert_with(HeaderMap::default)
             .insert(key.into(), val.into());
         self
     }
@@ -386,10 +386,7 @@ impl Client {
         callback: F,
     ) -> Result<()>
     where
-        F: for<'a> std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()>
-            + 'static
-            + Send
-            + Sync,
+        F: std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
         E: Into<Event>,
         D: Into<Payload>,
     {
@@ -434,38 +431,28 @@ impl Client {
     /// Handles the incoming acks and classifies what callbacks to call and how.
     #[inline]
     async fn handle_ack(&self, socket_packet: &Packet) -> Result<()> {
-        let mut to_be_removed = Vec::new();
-        if let Some(id) = socket_packet.id {
-            for (index, ack) in self.outstanding_acks.write().await.iter_mut().enumerate() {
-                if ack.id == id {
-                    to_be_removed.push(index);
-
-                    if ack.time_started.elapsed() < ack.timeout {
-                        if let Some(ref payload) = socket_packet.data {
-                            ack.callback.deref_mut()(
-                                Payload::from(payload.to_owned()),
-                                self.clone(),
-                            )
-                            .await;
-                        }
-                        if let Some(ref attachments) = socket_packet.attachments {
-                            if let Some(payload) = attachments.get(0) {
-                                ack.callback.deref_mut()(
-                                    Payload::Binary(payload.to_owned()),
-                                    self.clone(),
-                                )
-                                .await;
-                            }
-                        }
-                    } else {
-                        trace!(
-                            "Received an Ack that is now timed out (elapsed time was longer than specified duration)"
-                        );
-                    }
+        let Some(id) = socket_packet.id else {
+            return Ok(());
+        };
+        let ack = {
+            let mut acks = self.outstanding_acks.write().await;
+            acks.iter()
+                .position(|ack| ack.id == id)
+                .map(|index| acks.swap_remove(index))
+        };
+        // Release the lock before user code: callbacks may emit another ack.
+        if let Some(mut ack) = ack {
+            if ack.time_started.elapsed() < ack.timeout {
+                if let Some(payload) = &socket_packet.data {
+                    ack.callback.deref_mut()(Payload::from(payload.to_owned()), self.clone()).await;
                 }
-            }
-            for index in to_be_removed {
-                self.outstanding_acks.write().await.remove(index);
+                if let Some(attachments) = &socket_packet.attachments
+                    && let Some(payload) = attachments.first()
+                {
+                    ack.callback.deref_mut()(Payload::Binary(payload.clone()), self.clone()).await;
+                }
+            } else {
+                trace!("Received an Ack that is now timed out");
             }
         }
         Ok(())
@@ -480,11 +467,11 @@ impl Client {
             Event::Message
         };
 
-        if let Some(attachments) = &packet.attachments {
-            if let Some(binary_payload) = attachments.get(0) {
-                self.callback(&event, Payload::Binary(binary_payload.to_owned()))
-                    .await?;
-            }
+        if let Some(attachments) = &packet.attachments
+            && let Some(binary_payload) = attachments.first()
+        {
+            self.callback(&event, Payload::Binary(binary_payload.to_owned()))
+                .await?;
         }
         Ok(())
     }
@@ -612,7 +599,7 @@ mod test {
 
     use bytes::Bytes;
     use futures_util::{FutureExt, StreamExt};
-    use native_tls::TlsConnector;
+    use rustls::ClientConfig;
     use serde_json::json;
     use serial_test::serial;
     use tokio::{
@@ -629,6 +616,77 @@ mod test {
         error::Result,
         packet::{Packet, PacketId},
     };
+
+    #[tokio::test]
+    async fn ack_callback_can_reenter_ack_storage() -> Result<()> {
+        use super::{Ack, Callback, DynAsyncCallback, InnerSocket};
+        use std::{
+            io::{Read, Write},
+            net::TcpListener,
+        };
+        use tokio::time::Instant;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = url::Url::parse(&format!("http://{}/", listener.local_addr().unwrap()))?;
+        let server = std::thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0];
+            while !request.ends_with(b"\r\n\r\n") {
+                connection.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            let body = r#"0{"sid":"test","upgrades":[],"pingInterval":25000,"pingTimeout":20000}"#;
+            write!(
+                connection,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        let engine = rust_engineio::asynchronous::ClientBuilder::new(url.clone())
+            .build_polling()
+            .await?;
+        server.join().unwrap();
+        let client = Client::new(InnerSocket::new(engine)?, ClientBuilder::new(url))?;
+        let called = Arc::new(AtomicUsize::new(0));
+        let callback_called = Arc::clone(&called);
+        client.outstanding_acks.write().await.push(Ack {
+            id: 123,
+            time_started: Instant::now(),
+            timeout: Duration::from_secs(5),
+            callback: Callback::<DynAsyncCallback>::new(move |_, client| {
+                let called = Arc::clone(&callback_called);
+                async move {
+                    let mut acks = client.outstanding_acks.write().await;
+                    assert!(acks.is_empty());
+                    acks.push(Ack {
+                        id: 456,
+                        time_started: Instant::now(),
+                        timeout: Duration::from_secs(5),
+                        callback: Callback::<DynAsyncCallback>::new(|_, _| async {}.boxed()),
+                    });
+                    called.fetch_add(1, Ordering::Relaxed);
+                }
+                .boxed()
+            }),
+        });
+        let packet = Packet::new(
+            PacketId::Ack,
+            "/".into(),
+            Some("[]".into()),
+            Some(123),
+            0,
+            None,
+        );
+        tokio::time::timeout(Duration::from_secs(1), client.handle_ack(&packet))
+            .await
+            .unwrap()?;
+        client.handle_ack(&packet).await?;
+        assert_eq!(called.load(Ordering::Relaxed), 1);
+        assert_eq!(client.outstanding_acks.read().await[0].id, 456);
+        Ok(())
+    }
 
     #[tokio::test]
     async fn socket_io_integration() -> Result<()> {
@@ -727,10 +785,9 @@ mod test {
         // test socket build logic
         let socket_builder = ClientBuilder::new(url);
 
-        let tls_connector = TlsConnector::builder()
-            .use_sni(true)
-            .build()
-            .expect("Found illegal configuration");
+        let tls_connector = ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
 
         let socket = socket_builder
             .namespace("/admin")
@@ -890,10 +947,9 @@ mod test {
         // test socket build logic
         let socket_builder = ClientBuilder::new(url);
 
-        let tls_connector = TlsConnector::builder()
-            .use_sni(true)
-            .build()
-            .expect("Found illegal configuration");
+        let tls_connector = ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
 
         let socket = socket_builder
             .namespace("/admin")
@@ -1086,11 +1142,7 @@ mod test {
         let mut socket_stream = socket.as_stream().await;
         let _: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
-
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
+        let packet = socket_stream.next().await.unwrap()?;
 
         assert_eq!(
             packet,
@@ -1104,11 +1156,7 @@ mod test {
             )
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
-
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
+        let packet = socket_stream.next().await.unwrap()?;
 
         assert_eq!(
             packet,
@@ -1121,11 +1169,8 @@ mod test {
                 None
             )
         );
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
         assert_eq!(
             packet,
             Packet::new(
@@ -1138,11 +1183,8 @@ mod test {
             )
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
         assert_eq!(
             packet,
             Packet::new(
@@ -1155,11 +1197,8 @@ mod test {
             )
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
         assert_eq!(
             packet,
             Packet::new(
@@ -1179,11 +1218,8 @@ mod test {
             )
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-
-        let packet = packet.unwrap();
         assert_eq!(
             packet,
             Packet::new(
@@ -1229,10 +1265,8 @@ mod test {
                 .is_ok()
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-        let packet = packet.unwrap();
         assert_eq!(
             packet,
             Packet::new(
@@ -1245,10 +1279,8 @@ mod test {
             )
         );
 
-        let packet: Option<Packet> = Some(socket_stream.next().await.unwrap()?);
+        let packet = socket_stream.next().await.unwrap()?;
 
-        assert!(packet.is_some());
-        let packet = packet.unwrap();
         assert!(matches!(
             packet,
             Packet {

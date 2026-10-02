@@ -1,6 +1,9 @@
-use native_tls::Certificate;
-use native_tls::TlsConnector;
 use rust_socketio::ClientBuilder;
+use rustls::ClientConfig;
+use rustls::{
+    RootCertStore,
+    pki_types::{CertificateDer, pem::PemObject},
+};
 use std::fs::File;
 use std::io::Read;
 
@@ -12,12 +15,15 @@ fn main() {
     cert_file
         .read_to_end(&mut buf)
         .expect("Failed to read cert");
-    let cert: Certificate = Certificate::from_pem(&buf[..]).unwrap();
-
-    let tls_connector = TlsConnector::builder()
-        .add_root_certificate(cert)
-        .build()
-        .expect("Failed to build TLS Connector");
+    let mut roots = RootCertStore::empty();
+    for cert in CertificateDer::pem_slice_iter(&buf) {
+        roots
+            .add(cert.expect("Failed to parse certificate"))
+            .expect("Failed to add root certificate");
+    }
+    let tls_connector = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
 
     let socket = ClientBuilder::new("https://localhost:4200")
         .tls_config(tls_connector)

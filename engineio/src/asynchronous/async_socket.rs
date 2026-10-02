@@ -116,17 +116,6 @@ impl Socket {
         Ok(())
     }
 
-    /// Helper method that parses bytes and returns an iterator over the elements.
-    fn parse_payload(bytes: Bytes) -> impl Stream<Item = Result<Packet>> {
-        try_stream! {
-            let payload = Payload::try_from(bytes);
-
-            for elem in payload?.into_iter() {
-                yield elem;
-            }
-        }
-    }
-
     /// Creates a stream over the incoming packets, uses the streams provided by the
     /// underlying transport types.
     fn stream(
@@ -136,8 +125,8 @@ impl Socket {
         // to a packet stream
         Box::pin(try_stream! {
             for await payload in transport.as_pin_box() {
-                for await packet in Self::parse_payload(payload?) {
-                    yield packet?;
+                for packet in Payload::try_from(payload?)? {
+                    yield packet;
                 }
             }
         })

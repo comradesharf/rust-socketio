@@ -22,7 +22,7 @@ impl<T> Stream for StreamGenerator<T> {
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let mut lock = ready!(Box::pin(self.inner.lock()).poll_unpin(cx));
+        let mut lock = ready!(std::pin::pin!(self.inner.lock()).poll_unpin(cx));
         lock.poll_next_unpin(cx)
     }
 }

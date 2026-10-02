@@ -1,10 +1,10 @@
 use futures_util::future::BoxFuture;
 use log::trace;
-use native_tls::TlsConnector;
 use rust_engineio::{
     asynchronous::ClientBuilder as EngineIoClientBuilder,
     header::{HeaderMap, HeaderValue},
 };
+use rustls::ClientConfig;
 use std::collections::HashMap;
 use url::Url;
 
@@ -28,7 +28,7 @@ pub struct ClientBuilder {
     pub(crate) on_any: Option<Callback<DynAsyncAnyCallback>>,
     pub(crate) on_reconnect: Option<Callback<DynAsyncReconnectSettingsCallback>>,
     pub(crate) namespace: String,
-    tls_config: Option<TlsConnector>,
+    tls_config: Option<ClientConfig>,
     pub(crate) opening_headers: Option<HeaderMap>,
     transport_type: TransportType,
     pub(crate) auth: Option<serde_json::Value>,
@@ -186,10 +186,7 @@ impl ClientBuilder {
     #[cfg(feature = "async-callbacks")]
     pub fn on<T: Into<Event>, F>(mut self, event: T, callback: F) -> Self
     where
-        F: for<'a> std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()>
-            + 'static
-            + Send
-            + Sync,
+        F: std::ops::FnMut(Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
     {
         self.on
             .insert(event.into(), Callback::<DynAsyncCallback>::new(callback));
@@ -224,10 +221,7 @@ impl ClientBuilder {
     /// ```
     pub fn on_reconnect<F>(mut self, callback: F) -> Self
     where
-        F: for<'a> std::ops::FnMut() -> BoxFuture<'static, ReconnectSettings>
-            + 'static
-            + Send
-            + Sync,
+        F: std::ops::FnMut() -> BoxFuture<'static, ReconnectSettings> + 'static + Send + Sync,
     {
         self.on_reconnect = Some(Callback::<DynAsyncReconnectSettingsCallback>::new(callback));
         self
@@ -257,26 +251,26 @@ impl ClientBuilder {
     /// ```
     pub fn on_any<F>(mut self, callback: F) -> Self
     where
-        F: for<'a> FnMut(Event, Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
+        F: FnMut(Event, Payload, Client) -> BoxFuture<'static, ()> + 'static + Send + Sync,
     {
         self.on_any = Some(Callback::<DynAsyncAnyCallback>::new(callback));
         self
     }
 
-    /// Uses a preconfigured TLS connector for secure communication. This configures
+    /// Uses a preconfigured rustls client configuration for secure communication. This configures
     /// both the `polling` as well as the `websocket` transport type.
+    /// Add your trusted CA certificates to the root store before building the configuration.
     /// # Example
     /// ```rust
     /// use rust_socketio::{asynchronous::ClientBuilder, Payload};
-    /// use native_tls::TlsConnector;
+    /// use rustls::ClientConfig;
     /// use futures_util::future::FutureExt;
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let tls_connector =  TlsConnector::builder()
-    ///                .use_sni(true)
-    ///                .build()
-    ///             .expect("Found illegal configuration");
+    ///     let tls_connector =  ClientConfig::builder()
+    ///                .with_root_certificates(rustls::RootCertStore::empty())
+    ///                .with_no_client_auth();
     ///
     ///     let socket = ClientBuilder::new("http://localhost:4200/")
     ///         .namespace("/admin")
@@ -286,7 +280,7 @@ impl ClientBuilder {
     ///         .await;
     /// }
     /// ```
-    pub fn tls_config(mut self, tls_config: TlsConnector) -> Self {
+    pub fn tls_config(mut self, tls_config: ClientConfig) -> Self {
         self.tls_config = Some(tls_config);
         self
     }

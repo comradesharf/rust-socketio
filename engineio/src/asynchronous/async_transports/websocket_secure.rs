@@ -9,10 +9,9 @@ use bytes::Bytes;
 use futures_util::Stream;
 use futures_util::StreamExt;
 use http::HeaderMap;
-use native_tls::TlsConnector;
+use rustls::ClientConfig;
 use tokio::sync::RwLock;
-use tokio_tungstenite::Connector;
-use tokio_tungstenite::connect_async_tls_with_config;
+use tokio_tungstenite::{Connector, connect_async_tls_with_config};
 use tungstenite::client::IntoClientRequest;
 use url::Url;
 
@@ -28,11 +27,11 @@ pub struct WebsocketSecureTransport {
 }
 
 impl WebsocketSecureTransport {
-    /// Creates a new instance over a request that might hold additional headers, a possible
-    /// Tls connector and an URL.
+    /// Creates a secure WebSocket connection with optional rustls configuration and headers.
+    /// Without a configuration, rustls uses the platform's trusted root certificates.
     pub(crate) async fn new(
         base_url: Url,
-        tls_config: Option<TlsConnector>,
+        tls_config: Option<ClientConfig>,
         headers: Option<HeaderMap>,
     ) -> Result<Self> {
         let mut url = base_url;
@@ -51,12 +50,12 @@ impl WebsocketSecureTransport {
         // This means that segments are always sent as soon as possible, even if there is only a small amount of data.
         // When `false`, data is buffered until there is a sufficient amount to send out, thereby avoiding the frequent sending of small packets.
         //
-        // See the docs: https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html#method.set_nodelay
+        // See the docs: https://docs.rs/tokio/latest/tokio/net/struct/TcpStream.html#method.set_nodelay
         let (ws_stream, _) = connect_async_tls_with_config(
             req,
             None,
             /*disable_nagle=*/ false,
-            tls_config.map(Connector::NativeTls),
+            tls_config.map(|config| Connector::Rustls(Arc::new(config))),
         )
         .await?;
 
@@ -145,6 +144,32 @@ mod test {
             None,
         )
         .await
+    }
+
+    #[tokio::test]
+    async fn websocket_secure_rejects_untrusted_certificate() -> Result<()> {
+        // First confirm the server is reachable using the test CA.
+        let trusted = new().await?;
+        let config = ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+        let error = WebsocketSecureTransport::new(trusted.base_url().await?, Some(config), None)
+            .await
+            .expect_err("an untrusted server certificate must be rejected");
+        match error {
+            crate::Error::WebsocketError(tungstenite::Error::Io(error)) => {
+                assert!(matches!(
+                    error
+                        .get_ref()
+                        .and_then(|error| error.downcast_ref::<rustls::Error>()),
+                    Some(rustls::Error::InvalidCertificate(
+                        rustls::CertificateError::UnknownIssuer
+                    ))
+                ));
+            }
+            error => panic!("expected a certificate verification error, got {error:?}"),
+        }
+        Ok(())
     }
 
     #[tokio::test]

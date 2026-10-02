@@ -1,13 +1,15 @@
 use crate::error::Result;
-use adler32::adler32;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::Stream;
-use std::{pin::Pin, time::SystemTime};
+#[cfg(feature = "async")]
+use std::pin::Pin;
 use url::Url;
 
 use super::async_transports::{PollingTransport, WebsocketSecureTransport, WebsocketTransport};
 
+// async-trait adds must_use to futures, which Clippy 1.99 flags redundantly.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait AsyncTransport: Stream<Item = Result<Bytes>> + Unpin {
     /// Sends a packet to the server. This optionally handles sending of a
@@ -26,11 +28,7 @@ pub trait AsyncTransport: Stream<Item = Result<Bytes>> + Unpin {
     where
         Self: Sized,
     {
-        let reader = format!("{:#?}", SystemTime::now());
-        let hash = adler32(reader.as_bytes()).unwrap();
-        let mut url = self.base_url().await?;
-        url.query_pairs_mut().append_pair("t", &hash.to_string());
-        Ok(url)
+        Ok(crate::transport::cache_busted_url(self.base_url().await?))
     }
 }
 

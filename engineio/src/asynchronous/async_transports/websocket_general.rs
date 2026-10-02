@@ -7,7 +7,7 @@ use futures_util::{
 use std::{str::from_utf8, sync::Arc, task::Poll};
 use tokio::{net::TcpStream, sync::Mutex};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
-use tungstenite::Message;
+use tungstenite::{Message, Utf8Bytes};
 
 type AsyncWebsocketSender = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 type AsyncWebsocketReceiver = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
@@ -71,7 +71,7 @@ impl AsyncWebsocketGeneralTransport {
         let message = if is_binary_att {
             Message::binary(data)
         } else {
-            Message::text(from_utf8(data.as_ref())?)
+            Message::Text(Utf8Bytes::try_from(data)?)
         };
 
         sender.send(message).await?;
@@ -109,7 +109,7 @@ impl Stream for AsyncWebsocketGeneralTransport {
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         loop {
-            let mut lock = ready!(Box::pin(self.receiver.lock()).poll_unpin(cx));
+            let mut lock = ready!(std::pin::pin!(self.receiver.lock()).poll_unpin(cx));
             let next = ready!(lock.poll_next_unpin(cx));
 
             match next {
